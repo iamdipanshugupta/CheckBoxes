@@ -10,6 +10,7 @@ import jwt from 'jsonwebtoken';
 import 'dotenv/config';
 
 async function main() {
+    callbackURL: 'https://checkboxes-production-944c.up.railway.app/auth/google/callback'
     const app = express();
     const server = http.createServer(app);
     const io = new Server(server);
@@ -99,7 +100,7 @@ async function main() {
 
         socket.on('client:checkbox:change', async (data) => {
 
-            // 🔒 Anonymous users toggle nahi kar sakte
+            //  Anonymous users toggle nahi kar sakte
             if (socket.isAnonymous) {
                 socket.emit('server:error', { error: 'Please login to toggle checkboxes!' });
                 return;
