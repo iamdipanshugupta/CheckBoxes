@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>1 Million Checkboxes</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        font-family: Arial, sans-serif;
+        background: linear-gradient(to bottom, #87ceeb, #98fb98);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      h1 { color: #2e8b57; margin-bottom: 8px; font-size: 2rem; }
+
+      #stats {
+        font-size: 13px;
+        color: #444;
+        margin-bottom: 10px;
+      }
+
+      /* ── Auth bar ── */
+      #auth-bar {
+        margin-bottom: 14px;
+        text-align: center;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      #user-info { font-weight: bold; color: #2e8b57; font-size: 15px; }
+      #auth-btn {
+        padding: 8px 20px;
+        border-radius: 6px;
+        cursor: pointer;
+        border: none;
+        background: #4285f4;
+        color: white;
+        font-size: 14px;
+        transition: background 0.2s;
+      }
+      #auth-btn:hover { background: #3367d6; }
+
+      /* ── Virtual scroll container ── */
+      #scroll-container {
+        width: 100%;
+        max-width: 1100px;
+        height: 75vh;
+        overflow-y: auto;
+        border-radius: 10px;
+        background: rgba(255,255,255,0.35);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+        position: relative;
+      }
+
+      /* tall phantom div — gives the scrollbar correct height */
+      #phantom { width: 100%; }
+
+      /* visible rows sit at top, translated by JS */
+      #visible-area {
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        padding: 6px 10px;
+      }
+
+      .cb-row {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 6px;
+        margin-bottom: 6px;
+      }
+
+      .cb-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 42px;
+      }
+
+      .cb-wrap input[type="checkbox"] {
+        width: 24px;
+        height: 24px;
+        cursor: pointer;
+        accent-color: #2e8b57;
+      }
+
+      .cb-wrap label {
+        font-size: 8px;
+        color: #555;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        max-width: 42px;
+      }
+
+      /* ── Alert Modal ── */
+      #alertModal {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+      }
+      #alertModal.show { display: flex; }
+      .alert-box {
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        padding: 30px;
+        max-width: 400px;
+        width: 90%;
+        text-align: center;
+        animation: slideIn 0.25s ease;
+      }
+      @keyframes slideIn {
+        from { transform: translateY(-40px); opacity: 0; }
+        to   { transform: translateY(0);     opacity: 1; }
+      }
+      .alert-box h2 { color: #d9534f; margin-bottom: 12px; }
+      .alert-box p  { color: #333; line-height: 1.5; }
+      .alert-box button {
+        margin-top: 16px;
+        background: #d9534f;
+        color: white;
+        border: none;
+        padding: 10px 24px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 15px;
+      }
+      .alert-box button:hover { background: #c9302c; }
+    </style>
+  </head>
+
+  <body>
+    <h1>☑️ 1 Million Checkboxes</h1>
+    <div id="stats">Loading…</div>
+
+    <div id="auth-bar">
+      <span id="user-info"></span>
+      <button id="auth-btn" onclick="handleAuth()">Login with Google</button>
+    </div>
+
+    <div id="scroll-container">
+      <div id="phantom"></div>
+      <div id="visible-area"></div>
+    </div>
+
+    <!-- Alert Modal -->
+    <div id="alertModal">
+      <div class="alert-box">
+        <h2>⚠️ Notice</h2>
+        <p id="alertMessage"></p>
+        <button onclick="closeAlert()">Close</button>
+      </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      /* ═══════════════════════════════════════════════
+         AUTH
+      ═══════════════════════════════════════════════ */
+      const params   = new URLSearchParams(window.location.search);
+      const urlToken = params.get('token');
+      if (urlToken) {
+        localStorage.setItem('token', urlToken);
+        window.history.replaceState({}, '', '/');
+      }
+      const token = localStorage.getItem('token');
+
+      if (token) {
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          document.getElementById('user-info').textContent = `👤 ${payload.name}`;
+          document.getElementById('auth-btn').textContent  = 'Logout';
+        } catch {}
+      }
+
+      function handleAuth() {
+        if (localStorage.getItem('token')) {
+          localStorage.removeItem('token');
+          window.location.href = '/auth/logout';
+        } else {
+          window.location.href = '/auth/google';
+        }
+      }
+
+      /* ═══════════════════════════════════════════════
+         CONSTANTS
+      ═══════════════════════════════════════════════ */
+      const TOTAL      = 1_000_000;   // total checkboxes
+      const COLS       = 20;          // checkboxes per row
+      const ROW_H      = 54;          // px per row (checkbox + label + gap)
+      const TOTAL_ROWS = Math.ceil(TOTAL / COLS);   // 50 000 rows
+      const BUFFER     = 5;           // extra rows rendered above/below viewport
+
+      /* ═══════════════════════════════════════════════
+         STATE  — compact Uint8Array (1 bit per checkbox)
+         1 000 000 bits = 125 000 bytes ≈ 122 KB
+      ═══════════════════════════════════════════════ */
+      const state = new Uint8Array(Math.ceil(TOTAL / 8));
+
+      function getBit(i)        { return (state[i >> 3] >> (7 - (i & 7))) & 1; }
+      function setBit(i, v) {
+        if (v) state[i >> 3] |=  (1 << (7 - (i & 7)));
+        else   state[i >> 3] &= ~(1 << (7 - (i & 7)));
+      }
+
+      /* ═══════════════════════════════════════════════
+         SOCKET
+      ═══════════════════════════════════════════════ */
+      const socket = io({ auth: { token: token || null } });
+
+      socket.on('server:error', d => showAlert(d.error));
+
+      socket.on('server:checkbox:change', ({ index, checked }) => {
+        setBit(index, checked ? 1 : 0);
+        // If that checkbox is currently in DOM, update it
+        const el = document.getElementById(`cb-${index}`);
+        if (el) el.checked = !!checked;
+        updateStats();
+      });
+
+      /* ═══════════════════════════════════════════════
+         VIRTUAL SCROLL SETUP
+      ═══════════════════════════════════════════════ */
+      const scroller     = document.getElementById('scroll-container');
+      const phantom      = document.getElementById('phantom');
+      const visibleArea  = document.getElementById('visible-area');
+
+      // phantom height = total rows × row height
+      phantom.style.height = (TOTAL_ROWS * ROW_H) + 'px';
+
+      let renderedStart = -1;   // which row range is currently in DOM
+      let renderedEnd   = -1;
+
+      function visibleRowRange() {
+        const scrollTop   = scroller.scrollTop;
+        const viewH       = scroller.clientHeight;
+        const startRow    = Math.max(0,           Math.floor(scrollTop / ROW_H) - BUFFER);
+        const endRow      = Math.min(TOTAL_ROWS,  Math.ceil((scrollTop + viewH) / ROW_H) + BUFFER);
+        return { startRow, endRow };
+      }
+
+      function renderRows() {
+        const { startRow, endRow } = visibleRowRange();
+
+        // Skip if same range already rendered
+        if (startRow === renderedStart && endRow === renderedEnd) return;
+        renderedStart = startRow;
+        renderedEnd   = endRow;
+
+        // Translate visible area to correct position
+        visibleArea.style.transform = `translateY(${startRow * ROW_H}px)`;
+
+        // Build HTML for the visible rows
+        const frag = document.createDocumentFragment();
+
+        for (let r = startRow; r < endRow; r++) {
+          const row = document.createElement('div');
+          row.className = 'cb-row';
+
+          for (let c = 0; c < COLS; c++) {
+            const idx = r * COLS + c;
+            if (idx >= TOTAL) break;
+
+            const wrap  = document.createElement('div');
+            wrap.className = 'cb-wrap';
+
+            const cb  = document.createElement('input');
+            cb.type   = 'checkbox';
+            cb.id     = `cb-${idx}`;
+            cb.checked = !!getBit(idx);
+            cb.addEventListener('change', e => handleToggle(idx, e.target.checked));
+
+            const lbl  = document.createElement('label');
+            lbl.htmlFor   = `cb-${idx}`;
+            lbl.textContent = idx + 1;
+
+            wrap.appendChild(cb);
+            wrap.appendChild(lbl);
+            row.appendChild(wrap);
+          }
+          frag.appendChild(row);
+        }
+
+        // Replace DOM content
+        visibleArea.innerHTML = '';
+        visibleArea.appendChild(frag);
+      }
+
+      // Scroll listener — throttled with requestAnimationFrame
+      let ticking = false;
+      scroller.addEventListener('scroll', () => {
+        if (!ticking) {
+          requestAnimationFrame(() => { renderRows(); ticking = false; });
+          ticking = true;
+        }
+      });
+
+      /* ═══════════════════════════════════════════════
+         TOGGLE HANDLER
+      ═══════════════════════════════════════════════ */
+      function handleToggle(index, checked) {
+        setBit(index, checked ? 1 : 0);   // optimistic local update
+        socket.emit('client:checkbox:change', { index, checked });
+        updateStats();
+      }
+
+      /* ═══════════════════════════════════════════════
+         STATS
+      ═══════════════════════════════════════════════ */
+      function updateStats() {
+        let count = 0;
+        for (let i = 0; i < TOTAL; i++) if (getBit(i)) count++;
+        document.getElementById('stats').textContent =
+          `${count.toLocaleString()} / ${TOTAL.toLocaleString()} checked`;
+      }
+
+      /* ═══════════════════════════════════════════════
+         ALERT MODAL
+      ═══════════════════════════════════════════════ */
+      function showAlert(msg) {
+        document.getElementById('alertMessage').textContent = msg;
+        document.getElementById('alertModal').classList.add('show');
+      }
+      function closeAlert() {
+        document.getElementById('alertModal').classList.remove('show');
+      }
+
+      /* ═══════════════════════════════════════════════
+         INITIAL LOAD — fetch state from server
+      ═══════════════════════════════════════════════ */
+      async function loadInitialState() {
+        try {
+          const res  = await fetch('/checkboxes');
+          const data = await res.json();
+
+          if (data.checkboxes && Array.isArray(data.checkboxes)) {
+            // Server sends boolean array — pack into our Uint8Array
+            data.checkboxes.forEach((val, i) => {
+              if (i < TOTAL) setBit(i, val ? 1 : 0);
+            });
+          }
+        } catch (err) {
+          console.error('Failed to load state:', err);
+        }
+
+        renderRows();   // first render after state is ready
+        updateStats();
+      }
+
+      window.addEventListener('load', loadInitialState);
+    </script>
+  </body>
+</html>
