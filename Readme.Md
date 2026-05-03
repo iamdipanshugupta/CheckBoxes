@@ -4,13 +4,7 @@ A real-time collaborative checkbox web application where multiple users can togg
 
 ---
 
-## 🌐 Live Demo
 
-> [Add your deployed link here]
-
-## 🎥 Demo Video
-
-> [Add your YouTube unlisted video link here]
 
 ---
 
@@ -78,7 +72,7 @@ CheckBoxes/
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/your-username/checkboxes.git
+git clone https://github.com/iamdipanshugupta/CheckBoxes
 cd checkboxes
 ```
 
