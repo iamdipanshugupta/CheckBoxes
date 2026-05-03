@@ -1,9 +1,9 @@
 import Redis from "ioredis";
 
 function createRedisConnection() {
-    return new Redis({
-        host:'localhost',
-        port:6379
+    return new Redis(process.env.REDIS_URL || {
+        host: 'localhost',
+        port: 6379
     });
 }
 
