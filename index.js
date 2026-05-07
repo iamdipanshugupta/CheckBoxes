@@ -10,7 +10,7 @@ import jwt from 'jsonwebtoken';
 import 'dotenv/config';
 
 async function main() {
-    callbackURL: 'https://checkboxes-production-944c.up.railway.app/auth/google/callback'
+    callbackURL: "https://checkboxes-1-ztlg.onrender.com/auth/google/callback"
     const app = express();
     const server = http.createServer(app);
     const io = new Server(server);
